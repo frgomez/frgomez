@@ -1,0 +1,121 @@
+--- /home/darnok/DataSourceReader.java	Tue Mar 13 17:14:08 2001
++++ DataSourceReader.java	Sun Nov  2 02:19:20 2003
+@@ -26,10 +26,17 @@
+  * the design, construction, operation or maintenance of any nuclear
+  * facility. Licensee represents and warrants that it will not use or
+  * redistribute the Software for such purposes.
++ *
++ * Copyright (C) 2002,2003 by Konrad Rzeszutek.
++ *
++ *  This code has been modified from the original Sun Microsystem version
++ *  to allow of capturing screenshots into JPEG images.
++ *
+  */
+ 
+ import java.awt.*;
+ import java.io.IOException;
++import java.io.*;
+ import java.util.Vector;
+ import java.util.Enumeration;
+ import javax.media.*;
+@@ -38,7 +45,7 @@
+ import javax.media.protocol.DataSource;
+ import javax.media.datasink.*;
+ import javax.media.control.MonitorControl;
+-
++import javax.media.control.*;
+ 
+ /**
+  * Sample program to read data from an output DataSource of a Processor.
+@@ -84,7 +91,59 @@
+ 
+ 	// Get the raw output from the processor.
+ 	p.setContentDescriptor(new ContentDescriptor(ContentDescriptor.RAW));
++// Obtain the track controls.
++	TrackControl tc[] = p.getTrackControls();
++	if (tc == null) {
++	    System.err.println("Failed to obtain track controls from the processor.");
++	    return false;
++	}
++	// Search for the track control for the video track.
++	TrackControl videoTrack = null;
++	for (int i = 0; i < tc.length; i++) {
++	    if (tc[i].getFormat() instanceof VideoFormat) {
++		videoTrack = tc[i];
++		break;
++	    }
++	}
++	if (videoTrack == null) {
++	    System.err.println("The input media does not contain a video track.");
++	    return false;
++	}
++
++	// Program the videotrack
++	float frameRate = ((VideoFormat)videoTrack.getFormat()).getFrameRate();
++	Dimension size = ((VideoFormat)videoTrack.getFormat()).getSize();
++	
++	int w = (size.width % 8 == 0 ? size.width :
++				(int)(size.width / 8) * 8);
++	int h = (size.height % 8 == 0 ? size.height :
++				(int)(size.height / 8) * 8);
++	VideoFormat jpegFormat = new VideoFormat(VideoFormat.JPEG,
++						 new Dimension(w, h),
++						 Format.NOT_SPECIFIED,
++						 Format.byteArray,
++						 frameRate);
++	videoTrack.setFormat(jpegFormat);
++	System.err.println("Video transmitted as:");
++	System.err.println("  " + jpegFormat);
++	
++
++	// Instantiate and set the frame access codec to the data flow path.
+ 
++	try {
++	    Codec codec[] = {  new MotionDetectionEffect()};
++	    videoTrack.setCodecChain(codec);
++	} catch (UnsupportedPlugInException e) {
++	    System.err.println("The processor does not support effects.");
++	}
++
++	// Realize the processor.
++	
++	p.prefetch();
++	if (!waitForState(p.Prefetched)) {
++	    System.err.println("Failed to realize the processor.");
++	    return false;
++	}	
+ 	p.realize();
+ 	if (!waitForState(p.Realized)) {
+ 	    System.err.println("Failed to realize the processor.");
+@@ -150,8 +209,8 @@
+ 
+ 	// Start the processor.
+ 	p.start();
+-
+-	setVisible(true);
++	if (monitorOn)
++		setVisible(true);
+ 
+ 	return true;
+     }
+@@ -477,6 +536,20 @@
+ 
+ 	    if (buffer.isEOM())
+ 		System.err.println("  Got EOM!");
++
++	    // Write the data in a file.
++	    try {
++	    	String imageFile = "image"+buffer.getTimeStamp()+".jpg";
++	    	RandomAccessFile raFile;
++	    	raFile = new RandomAccessFile(imageFile,"rw");
++
++	    	byte data[] = null;
++	    	data = (byte[])buffer.getData();
++	    	raFile.write(data, 0 , buffer.getLength());
++	    	raFile.close();
++	    } catch (Exception e) {
++		    e.printStackTrace();
++	    }
+ 	}
+ 
+ 	public Object [] getControls() {
